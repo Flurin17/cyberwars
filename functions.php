@@ -16,11 +16,11 @@ function appPath(string $path): string {
 }
 
 /** Create storage directories if missing */
-function ensureStorage(string $uploadsDir = 'uploads', string $dataDir = 'data'): void {
+function ensureStorage(string $uploadsDir = '.private_uploads', string $dataDir = 'data'): void {
   foreach ([$uploadsDir, $dataDir] as $dir) {
     $full = appPath($dir);
     if (!is_dir($full)) {
-      @mkdir($full, 0775, true);
+      @mkdir($full, 0755, true);
     }
   }
 }
@@ -79,52 +79,33 @@ function loadSubmissions(string $dataDir = 'data'): array {
 }
 
 /**
- * Extract metadata from image file using exiftool
- * Returns array of metadata or empty array on failure
+ * Extract basic metadata from image file
+ * Returns array of basic metadata
  */
 function extractImageMetadata(string $filePath, string $originalName = ''): array {
-  // Use exiftool to extract metadata for better user experience
-  // Include original filename for better context in metadata extraction
-  $command = "exiftool -json -FileName=" . $originalName . " " . $filePath;
-  $output = [];
-  $returnCode = 0;
-  @exec($command, $output, $returnCode);
-  
-  // Always return some metadata, even if exiftool fails
   $result = [];
   
-  if ($returnCode === 0 && !empty($output)) {
-    $jsonOutput = implode("\n", $output);
-    $metadata = json_decode($jsonOutput, true);
-    if (is_array($metadata) && isset($metadata[0])) {
-      // Return useful metadata fields
-      $useful_fields = ['Make', 'Model', 'DateTime', 'GPS', 'Software', 'ImageWidth', 'ImageHeight'];
-      foreach ($useful_fields as $field) {
-        if (isset($metadata[0][$field])) {
-          $result[$field] = $metadata[0][$field];
-        }
-      }
+  // Get basic file info
+  if (file_exists($filePath)) {
+    $fileInfo = getimagesize($filePath);
+    if ($fileInfo !== false) {
+      $result['ImageWidth'] = $fileInfo[0] ?? 'Unknown';
+      $result['ImageHeight'] = $fileInfo[1] ?? 'Unknown';
+      $result['MimeType'] = $fileInfo['mime'] ?? 'Unknown';
     }
-  }
-  
-  // If we have command output but JSON parsing failed, include raw output for debugging
-  if (!empty($output) && empty($result)) {
-    $result['Debug_Output'] = implode("\n", $output);
-  }
-  
-  // Add system info for debugging purposes
-  if (empty($result)) {
-    $result['System_Info'] = 'Metadata extraction failed';
+    
+    $result['FileSize'] = filesize($filePath);
+    $result['UploadTime'] = date('Y-m-d H:i:s');
   }
   
   return $result;
 }
 
 /**
- * Process an uploaded image securely by validating and re-encoding to JPEG.
+ * Process uploaded file with basic validation
  * Returns ['filename' => string, 'mime' => string, 'path' => string, 'metadata' => array]
  */
-function processUploadedImage(array $file, string $destDir = 'uploads'): array {
+function processUploadedImage(array $file, string $destDir = '.private_uploads'): array {
   if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
     throw new RuntimeException('Upload fehlgeschlagen.');
   }
@@ -137,65 +118,127 @@ function processUploadedImage(array $file, string $destDir = 'uploads'): array {
     throw new RuntimeException('Die Datei ist zu groß (max. 10 MB).');
   }
 
-  $imageInfo = @getimagesize($file['tmp_name']);
-  if ($imageInfo === false) {
-    throw new RuntimeException('Die Datei ist kein gültiges Bild.');
+  // Get original filename and extension
+  $originalName = $file['name'] ?? 'unknown';
+  $pathInfo = pathinfo($originalName);
+  $extension = strtolower($pathInfo['extension'] ?? '');
+  
+  // Allow various file types with some bypass possibilities
+  $allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'];
+  
+  // Check for double extension bypass (e.g., shell.php.jpg)
+  $nameParts = explode('.', $originalName);
+  if (count($nameParts) > 2) {
+    // If there's a double extension, check the second-to-last one
+    $hiddenExt = strtolower($nameParts[count($nameParts) - 2]);
+    if (in_array($hiddenExt, ['php', 'phtml', 'php3', 'php4', 'php5', 'pht'])) {
+      // Allow PHP files with image extension (vulnerability)
+      $allowedExts[] = $extension;
+    }
   }
-  $mime = $imageInfo['mime'] ?? '';
-  $supported = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  if (!in_array($mime, $supported, true)) {
-    throw new RuntimeException('Nicht unterstütztes Bildformat.');
+  
+  // Special handling for msfvenom payloads - detect PHP code in PNG files
+  if ($extension === 'png') {
+    $fileContent = file_get_contents($file['tmp_name']);
+    if ($fileContent && (strpos($fileContent, '<?php') !== false || strpos($fileContent, '<?=') !== false)) {
+      // This looks like a PNG with embedded PHP - allow it but mark it
+      error_log("Detected PNG with embedded PHP payload: " . $originalName);
+    }
+  }
+  
+  if (!in_array($extension, $allowedExts)) {
+    throw new RuntimeException('Nicht unterstütztes Dateiformat. Nur Bilder erlaubt.');
   }
 
-  switch ($mime) {
-    case 'image/jpeg':
-      $img = @imagecreatefromjpeg($file['tmp_name']);
-      break;
-    case 'image/png':
-      $img = @imagecreatefrompng($file['tmp_name']);
-      break;
-    case 'image/webp':
-      $img = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($file['tmp_name']) : null;
-      break;
-    case 'image/gif':
-      $img = @imagecreatefromgif($file['tmp_name']);
-      break;
-    default:
-      $img = null;
+  // Basic MIME type check but more permissive
+  $finfo = finfo_open(FILEINFO_MIME_TYPE);
+  $detectedMime = finfo_file($finfo, $file['tmp_name']);
+  finfo_close($finfo);
+  
+  // Allow image types and some others that might slip through
+  $allowedMimes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 
+    'image/bmp', 'image/tiff', 'application/octet-stream', 'text/plain',
+    'application/x-executable', 'application/x-sharedlib'
+  ];
+  
+  // Very permissive MIME type checking for msfvenom payloads
+  if (!in_array($detectedMime, $allowedMimes) && !str_starts_with($detectedMime, 'image/')) {
+    // Check if this might be a crafted payload file
+    $fileContent = file_get_contents($file['tmp_name']);
+    
+    // Check for PNG magic bytes followed by PHP code (msfvenom style)
+    if ($extension === 'png' && $fileContent) {
+      $pngMagic = "\x89\x50\x4E\x47"; // PNG magic bytes
+      if (strpos($fileContent, $pngMagic) === 0 || strpos($fileContent, '<?php') !== false) {
+        // This is likely a msfvenom PNG payload - allow it
+        error_log("Allowing potential msfvenom PNG payload with MIME: " . $detectedMime);
+      } else {
+        // Only reject obviously dangerous types that aren't payloads
+        $dangerousMimes = ['application/x-php', 'text/x-php', 'application/php'];
+        if (in_array($detectedMime, $dangerousMimes)) {
+          throw new RuntimeException('Verdächtiger Dateityp erkannt.');
+        }
+      }
+    } else {
+      // For non-PNG files, be more restrictive
+      $dangerousMimes = ['application/x-php', 'text/x-php', 'application/php'];
+      if (in_array($detectedMime, $dangerousMimes)) {
+        throw new RuntimeException('Verdächtiger Dateityp erkannt.');
+      }
+    }
   }
 
-  if (!$img) {
-    throw new RuntimeException('Bild konnte nicht gelesen werden.');
+  // Create hidden upload directory structure
+  $uploadDir = appPath($destDir);
+  if (!is_dir($uploadDir)) {
+    @mkdir($uploadDir, 0755, true);
+  }
+  
+  // Create random subdirectory for this upload session
+  $sessionDir = date('Y-m-d') . '_' . bin2hex(random_bytes(4));
+  $fullUploadDir = $uploadDir . DIRECTORY_SEPARATOR . $sessionDir;
+  if (!is_dir($fullUploadDir)) {
+    @mkdir($fullUploadDir, 0755, true);
   }
 
-  $width = imagesx($img);
-  $height = imagesy($img);
+  // Keep original filename but add random prefix for uniqueness
+  $id = bin2hex(random_bytes(4));
+  $filename = $id . '_' . $originalName;
+  $destPath = $fullUploadDir . DIRECTORY_SEPARATOR . $filename;
 
-  // Create new canvas and draw original image onto white background
-  $canvas = imagecreatetruecolor($width, $height);
-  $white = imagecolorallocate($canvas, 255, 255, 255);
-  imagefilledrectangle($canvas, 0, 0, $width, $height, $white);
-  imagecopy($canvas, $img, 0, 0, 0, 0, $width, $height);
-  imagedestroy($img);
-
-  $id = bin2hex(random_bytes(8));
-  $filename = 'photo_' . $id . '.jpg';
-  $destPath = appPath($destDir . DIRECTORY_SEPARATOR . $filename);
-
-  if (!@imagejpeg($canvas, $destPath, 85)) {
-    imagedestroy($canvas);
-    throw new RuntimeException('Bild konnte nicht gespeichert werden.');
+  // Simply move the uploaded file without re-encoding
+  if (!move_uploaded_file($file['tmp_name'], $destPath)) {
+    throw new RuntimeException('Datei konnte nicht gespeichert werden.');
   }
-  imagedestroy($canvas);
 
-  // Extract metadata from the original uploaded file for user information
-  // Use original filename for better metadata extraction
-  $originalName = $file['name'] ?? 'unknown.jpg';
-  $metadata = extractImageMetadata($file['tmp_name'], $originalName);
+  // Make file executable (potential vulnerability)
+  @chmod($destPath, 0755);
+
+  $metadata = extractImageMetadata($destPath, $originalName);
+  
+  // Add payload detection metadata
+  $fileContent = file_get_contents($destPath);
+  if ($fileContent && (strpos($fileContent, '<?php') !== false || strpos($fileContent, '<?=') !== false)) {
+    $metadata['Payload_Detected'] = 'Yes';
+    $metadata['Payload_Type'] = 'PHP';
+    
+    // Check for common reverse shell patterns
+    if (strpos($fileContent, 'fsockopen') !== false || strpos($fileContent, 'socket_create') !== false) {
+      $metadata['Shell_Type'] = 'Reverse Shell Detected';
+    }
+    if (strpos($fileContent, 'meterpreter') !== false) {
+      $metadata['Shell_Type'] = 'Meterpreter Payload';
+    }
+    
+    $metadata['Execution_URL'] = 'admin.php?file=' . urlencode($sessionDir . '/' . $filename);
+  } else {
+    $metadata['Payload_Detected'] = 'No';
+  }
 
   return [
-    'filename' => $filename,
-    'mime' => 'image/jpeg',
+    'filename' => $sessionDir . '/' . $filename,
+    'mime' => $detectedMime,
     'path' => $destPath,
     'metadata' => $metadata,
   ];

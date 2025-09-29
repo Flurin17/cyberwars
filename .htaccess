@@ -1,0 +1,43 @@
+# Security configurations
+<Files "*.log">
+    Order allow,deny
+    Deny from all
+</Files>
+
+<Files "*.jsonl">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Hide sensitive directories from directory listing
+Options -Indexes
+
+# Custom error pages
+ErrorDocument 403 "Access Denied"
+ErrorDocument 404 "File Not Found"
+
+# Allow access to admin endpoints (intentionally permissive for CTF)
+<Files "admin.php">
+    Order allow,deny
+    Allow from all
+</Files>
+
+<Files "config.php">
+    Order allow,deny
+    Allow from all
+</Files>
+
+<Files "backup.php">
+    Order allow,deny
+    Allow from all
+</Files>
+
+<Files "debug.php">
+    Order allow,deny
+    Allow from all
+</Files>
+
+<Files "test.php">
+    Order allow,deny
+    Allow from all
+</Files>

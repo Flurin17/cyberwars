@@ -31,7 +31,7 @@ $items = loadSubmissions();
         <div class="grid">
           <?php foreach ($items as $entry): ?>
             <figure class="card">
-              <img loading="lazy" src="<?php echo 'uploads/' . escape($entry['image']); ?>" alt="<?php echo escape($entry['title']); ?>" />
+              <img loading="lazy" src="<?php echo 'uploads/?file=' . urlencode($entry['image']); ?>" alt="<?php echo escape($entry['title']); ?>" />
               <figcaption>
                 <h3><?php echo escape($entry['title']); ?></h3>
                 <p><?php echo escape($entry['description']); ?></p>

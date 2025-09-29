@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /admin.php
+Disallow: /config.php
+Disallow: /backup.php
+Disallow: /debug.php
+Disallow: /test.php
+Disallow: /.private_uploads/
+Disallow: /data/
+Disallow: /logs/
+Disallow: /tmp/
+Disallow: /dev/
+Allow: /uploads/
+Allow: /assets/
