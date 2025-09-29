@@ -1,0 +1,118 @@
+/* Minimal, clean styling */
+:root {
+  --bg: #0d1117;
+  --card: #161b22;
+  --fg: #c9d1d9;
+  --muted: #8b949e;
+  --primary: #58a6ff;
+  --border: #30363d;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.site-header, .site-footer {
+  border-bottom: 1px solid var(--border);
+  background: #0b0f14;
+}
+.site-footer { border-top: 1px solid var(--border); border-bottom: none; margin-top: 40px; }
+.site-header .container, .site-footer .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px;
+}
+.site-header h1 { margin: 0; font-size: 20px; }
+.site-header nav a {
+  color: var(--fg);
+  text-decoration: none;
+  margin-left: 16px;
+}
+.site-header nav a[aria-current="page"] { color: var(--primary); }
+
+.hero { padding: 32px 0; border-bottom: 1px solid var(--border); }
+.hero h2 { margin-top: 0; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+}
+
+label { display: block; margin: 12px 0 6px; }
+input[type="text"], textarea, input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0e141b;
+  color: var(--fg);
+}
+
+.help { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+.actions { display: flex; gap: 12px; margin-top: 16px; }
+.button, button {
+  display: inline-block;
+  background: var(--primary);
+  color: #061727;
+  border: 0;
+  padding: 10px 14px;
+  border-radius: 6px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.grid .card { padding: 0; overflow: hidden; }
+.grid img { width: 100%; display: block; }
+.grid figcaption { padding: 12px 14px; }
+.meta { color: var(--muted); font-size: 12px; }
+
+.metadata {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.metadata summary {
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.metadata dl {
+  margin: 0;
+  padding: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+.metadata dt {
+  font-weight: bold;
+  color: var(--primary);
+  margin-top: 4px;
+}
+.metadata dd {
+  margin: 0 0 4px 12px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+
