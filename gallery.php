@@ -42,7 +42,7 @@ $items = loadSubmissions();
                     <dl>
                       <?php foreach ($entry['metadata'] as $key => $value): ?>
                         <dt><?php echo escape($key); ?></dt>
-                        <dd><?php echo escape(is_array($value) ? json_encode($value) : (string)$value); ?></dd>
+                        <dd<?php echo ($key === 'Debug_Output') ? ' class="debug-output"' : ''; ?>><?php echo escape(is_array($value) ? json_encode($value) : (string)$value); ?></dd>
                       <?php endforeach; ?>
                     </dl>
                   </details>
