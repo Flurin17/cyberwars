@@ -1,0 +1,12 @@
+# Luzerner Tourismusbüro - robots.txt
+# #LuzernerMoments Kampagne
+
+User-agent: *
+Disallow: /uploads/
+Disallow: /data/
+Disallow: /backup_smb.sh
+Allow: /
+
+# Hinweis: Upload-Verzeichnis ist für Crawler gesperrt
+# Weitere interne Dateien sollten nicht indexiert werden
+

