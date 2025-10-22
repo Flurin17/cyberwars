@@ -51,7 +51,10 @@ if (!move_uploaded_file($tmpPath, $uploadPath)) {
     die('Fehler beim Speichern der Datei.');
 }
 
-// Speichere die Submission in der JSONL-Datei
+// Setze Berechtigungen damit www-data darauf zugreifen kann
+chmod($uploadPath, 0644);
+
+// Speichere die Submission in der TXT-Datei
 $submission = [
     'timestamp' => date('Y-m-d H:i:s'),
     'name' => $name,

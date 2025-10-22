@@ -21,7 +21,6 @@ $recentSubmissions = getRecentSubmissions(6);
             </div>
             <nav>
                 <a href="index.php">Home</a>
-                <a href="gallery.php">Galerie</a>
             </nav>
         </div>
     </header>
@@ -96,9 +95,6 @@ $recentSubmissions = getRecentSubmissions(6);
                         </div>
                     </div>
                 <?php endforeach; ?>
-            </div>
-            <div class="gallery-link">
-                <a href="gallery.php" class="btn-secondary">Alle Moments ansehen →</a>
             </div>
         </section>
         <?php endif; ?>

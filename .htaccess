@@ -22,6 +22,11 @@ ErrorDocument 403 /index.php
 # Verhindere Directory Listing (teilweise)
 Options -Indexes
 
+# Schütze sensitive Verzeichnisse
+<DirectoryMatch "^.*(data|config).*$">
+    Require all denied
+</DirectoryMatch>
+
 # Schutz für sensitive Dateien
 <FilesMatch "^\.">
     Require all denied

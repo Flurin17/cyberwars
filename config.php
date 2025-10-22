@@ -4,7 +4,7 @@
 // Pfade
 define('UPLOAD_DIR', 'uploads/');
 define('DATA_DIR', 'data/');
-define('SUBMISSIONS_FILE', DATA_DIR . 'submissions.jsonl');
+define('SUBMISSIONS_FILE', DATA_DIR . 'uploaded_files.txt');
 
 // Upload-Einstellungen
 define('MAX_FILE_SIZE', 5 * 1024 * 1024); // 5MB

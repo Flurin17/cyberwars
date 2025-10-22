@@ -2,21 +2,31 @@
 // Hilfsfunktionen für die #LuzernerMoments Website
 
 /**
- * Speichert eine Submission in der JSONL-Datei
+ * Speichert eine Submission in der TXT-Datei
  */
 function saveSubmission($submission) {
     // Stelle sicher, dass das data/ Verzeichnis existiert
     if (!is_dir(DATA_DIR)) {
-        mkdir(DATA_DIR, 0755, true);
+        mkdir(DATA_DIR, 0777, true);
+        chmod(DATA_DIR, 0777);
     }
 
-    // Füge die Submission als neue Zeile hinzu (JSONL-Format)
-    $jsonLine = json_encode($submission, JSON_UNESCAPED_UNICODE) . "\n";
-    file_put_contents(SUBMISSIONS_FILE, $jsonLine, FILE_APPEND | LOCK_EX);
+    // Einfaches TXT-Format: Timestamp|Name|Email|Description|Filename
+    $line = sprintf(
+        "%s|%s|%s|%s|%s\n",
+        $submission['timestamp'],
+        $submission['name'],
+        $submission['email'],
+        $submission['description'],
+        $submission['filename']
+    );
+    
+    file_put_contents(SUBMISSIONS_FILE, $line, FILE_APPEND | LOCK_EX);
+    chmod(SUBMISSIONS_FILE, 0666);
 }
 
 /**
- * Liest alle Submissions aus der JSONL-Datei
+ * Liest alle Submissions aus der TXT-Datei
  */
 function getAllSubmissions() {
     if (!file_exists(SUBMISSIONS_FILE)) {
@@ -27,9 +37,16 @@ function getAllSubmissions() {
     $lines = file(SUBMISSIONS_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
     foreach ($lines as $line) {
-        $submission = json_decode($line, true);
-        if ($submission) {
-            $submissions[] = $submission;
+        $parts = explode('|', $line);
+        if (count($parts) === 5) {
+            $submissions[] = [
+                'timestamp' => $parts[0],
+                'name' => $parts[1],
+                'email' => $parts[2],
+                'description' => $parts[3],
+                'filename' => $parts[4],
+                'photo' => UPLOAD_DIR . $parts[4]
+            ];
         }
     }
 
