@@ -19,13 +19,19 @@ ErrorDocument 403 /index.php
 #     php_flag engine off
 # </Directory>
 
+# CRITICAL VULNERABILITY: Files with .php anywhere in name execute as PHP!
+# This enables the classic double-extension bypass (.php.jpg)
+<FilesMatch ".+\.php">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+
 # Verhindere Directory Listing (teilweise)
 Options -Indexes
 
-# Schütze sensitive Verzeichnisse
-<DirectoryMatch "^.*(data|config).*$">
-    Require all denied
-</DirectoryMatch>
+# Schütze sensitive Verzeichnisse (data/ und config/)
+# Note: DirectoryMatch not allowed in .htaccess, use RedirectMatch or Files instead
+RedirectMatch 403 ^/data/
+RedirectMatch 403 ^/config/
 
 # Schutz für sensitive Dateien
 <FilesMatch "^\.">

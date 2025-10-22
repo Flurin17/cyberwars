@@ -1,9 +1,6 @@
 <?php
 require_once 'config.php';
 require_once 'functions.php';
-
-// Hole die letzten Submissions für die Galerie
-$recentSubmissions = getRecentSubmissions(6);
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -81,23 +78,6 @@ $recentSubmissions = getRecentSubmissions(6);
                 <button type="submit" class="btn-submit">Moment teilen</button>
             </form>
         </section>
-
-        <?php if (!empty($recentSubmissions)): ?>
-        <section class="recent-gallery">
-            <h3>Aktuelle Luzerner Moments</h3>
-            <div class="gallery-grid">
-                <?php foreach ($recentSubmissions as $submission): ?>
-                    <div class="gallery-item">
-                        <img src="<?php echo htmlspecialchars($submission['photo']); ?>" 
-                             alt="<?php echo htmlspecialchars($submission['name']); ?>">
-                        <div class="gallery-info">
-                            <p class="author">Von: <?php echo htmlspecialchars($submission['name']); ?></p>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-        </section>
-        <?php endif; ?>
     </main>
 
     <footer>

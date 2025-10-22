@@ -42,8 +42,9 @@ if (!in_array($fileExtension, $allowedExtensions)) {
     die('Ungültiges Dateiformat. Erlaubt sind: JPG, JPEG, PNG, GIF');
 }
 
-// Generiere einen "zufälligen" Dateinamen
-$randomName = 'photo_' . bin2hex(random_bytes(8)) . '.' . $fileExtension;
+// VULNERABLE: Speichere Datei mit Original-Namen!
+// Dies erleichtert das Auffinden hochgeladener Dateien
+$randomName = $originalName;
 $uploadPath = UPLOAD_DIR . $randomName;
 
 // Verschiebe die Datei ins Upload-Verzeichnis

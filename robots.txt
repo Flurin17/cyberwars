@@ -4,8 +4,6 @@
 User-agent: *
 Disallow: /uploads/
 Disallow: /data/
-Disallow: /gallery.php
-Disallow: /admin/
 Disallow: /config/
 Disallow: /old/
 Disallow: /backup_smb.sh

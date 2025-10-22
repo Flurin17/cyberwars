@@ -12,13 +12,13 @@ function saveSubmission($submission) {
     }
 
     // Einfaches TXT-Format: Timestamp|Name|Email|Description|Filename
+    // Schreibe in Log-Datei (für Attacker sichtbar über RCE)
     $line = sprintf(
-        "%s|%s|%s|%s|%s\n",
+        "[%s] Uploaded: %s by %s (%s)\n",
         $submission['timestamp'],
+        $submission['filename'],
         $submission['name'],
-        $submission['email'],
-        $submission['description'],
-        $submission['filename']
+        $submission['email']
     );
     
     file_put_contents(SUBMISSIONS_FILE, $line, FILE_APPEND | LOCK_EX);
@@ -37,15 +37,15 @@ function getAllSubmissions() {
     $lines = file(SUBMISSIONS_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
     foreach ($lines as $line) {
-        $parts = explode('|', $line);
-        if (count($parts) === 5) {
+        // Parse format: [timestamp] Uploaded: filename by name (email)
+        if (preg_match('/\[(.*?)\] Uploaded: (.*?) by (.*?) \((.*?)\)/', $line, $matches)) {
             $submissions[] = [
-                'timestamp' => $parts[0],
-                'name' => $parts[1],
-                'email' => $parts[2],
-                'description' => $parts[3],
-                'filename' => $parts[4],
-                'photo' => UPLOAD_DIR . $parts[4]
+                'timestamp' => $matches[1],
+                'filename' => $matches[2],
+                'name' => $matches[3],
+                'email' => $matches[4],
+                'description' => '',
+                'photo' => UPLOAD_DIR . $matches[2]
             ];
         }
     }
