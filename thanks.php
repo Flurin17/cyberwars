@@ -24,7 +24,6 @@ if (!empty($photoName)) {
             </div>
             <nav>
                 <a href="index.php">Home</a>
-                <a href="gallery.php">Galerie</a>
             </nav>
         </div>
     </header>
@@ -55,8 +54,8 @@ if (!empty($photoName)) {
             </div>
 
             <div class="cta-buttons">
-                <a href="gallery.php" class="btn-secondary">Zur Galerie</a>
-                <a href="index.php" class="btn-secondary">Zur Startseite</a>
+                <a href="index.php" class="btn-secondary">Weitere Momente teilen</a>
+                <a href="uploads/" class="btn-secondary">Uploads ansehen</a>
             </div>
 
             <div class="share-reminder">

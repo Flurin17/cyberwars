@@ -12,16 +12,15 @@ Transformed Flag 1 into a realistic CTF challenge requiring proper web enumerati
 
 #### 1. `index.php`
 **Changes:**
-- ✅ Removed gallery link from main navigation
-- ✅ Removed "Alle Moments ansehen" footer link
-- **Impact:** Gallery now requires enumeration to discover
+- ✅ Removed Upload-Übersicht aus der Hauptnavigation
+- ✅ Entfernte direkte Verlinkung auf eine Galerie-Seite
+- **Impact:** Übersicht liegt nun unter `/uploads/` und muss aktiv gefunden werden
 
 #### 2. `robots.txt`
 **Changes:**
-- ✅ Added `/gallery.php` to Disallow list
-- ✅ Added decoy entries: `/admin/`, `/config/`, `/old/`
-- ✅ Kept existing entries: `/uploads/`, `/data/`, `/backup_smb.sh`
-- **Impact:** Provides enumeration hints while adding realistic noise
+- ✅ Betont `/uploads/`, `/data/`, `/config/`, `/old/`, `/backup_smb.sh` als relevante Einträge
+- ✅ Fügte zusätzliche Decoy-Einträge wie `/admin/` hinzu
+- **Impact:** Liefert Enumeration-Hinweise mit realistischer Ablenkung
 
 #### 3. `.htaccess`
 **Changes:**
@@ -127,8 +126,7 @@ Transformed Flag 1 into a realistic CTF challenge requiring proper web enumerati
 │ 2. ENUMERATION                                              │
 │    └── feroxbuster/gobuster with Kali wordlists             │
 │    └── Discover:                                            │
-│        • /gallery.php (200) ← HIDDEN TARGET                 │
-│        • /uploads/ (directory)                              │
+│        • /uploads/ (directory) ← Upload-Übersicht          │
 │        • /admin/ (200) - decoy                              │
 │        • /old/ (200) - decoy                                │
 │        • /config/ (403) - protected                         │
@@ -137,7 +135,7 @@ Transformed Flag 1 into a realistic CTF challenge requiring proper web enumerati
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. VULNERABILITY DISCOVERY                                  │
-│    └── Explore gallery.php                                  │
+│    └── Explore uploads/index.php                            │
 │    └── Identify upload functionality                        │
 │    └── Test file upload validation                          │
 │    └── Discover double-extension bypass (.php.jpg)          │
@@ -152,8 +150,9 @@ Transformed Flag 1 into a realistic CTF challenge requiring proper web enumerati
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 5. EXPLOITATION                                             │
-│    └── Upload shell.php.jpg via gallery form                │
-│    └── Find filename in gallery or data/uploaded_files.txt  │
+│    └── Upload shell.php.jpg über das Formular auf index.php │
+│    └── Finde Dateinamen über /uploads/ oder data/uploaded_  │
+│        files.txt                                            │
 │    └── Trigger: curl http://target/uploads/photo_XXX.jpg    │
 │    └── Receive reverse shell as www-data                    │
 └─────────────────────────────────────────────────────────────┘
@@ -171,8 +170,7 @@ Transformed Flag 1 into a realistic CTF challenge requiring proper web enumerati
 ## Enumeration Targets
 
 ### Discoverable via robots.txt
-- `/gallery.php` - Main target (hidden from navigation)
-- `/uploads/` - File storage directory
+- `/uploads/` - Upload-Übersicht und Dateiablage
 - `/data/` - Protected data directory
 - `/admin/` - Fake admin panel (decoy)
 - `/old/` - Old site (decoy)
@@ -192,7 +190,7 @@ All of the above plus:
 
 1. **Information Disclosure**
    - robots.txt reveals hidden paths
-   - gallery.php discoverable but not linked
+   - Upload-Verzeichnis `/uploads/` discoverable but nicht verlinkt
 
 2. **Insufficient Upload Validation**
    - Only checks file extension, not content
@@ -223,8 +221,8 @@ bash test-exploit.sh
 # Manual enumeration
 feroxbuster -u http://localhost:8080/ -w /usr/share/wordlists/dirb/common.txt -x php
 
-# Access hidden gallery
-curl http://localhost:8080/gallery.php
+# Access uploads overview
+curl http://localhost:8080/uploads/
 ```
 
 ### Production Deployment (Ubuntu Server)

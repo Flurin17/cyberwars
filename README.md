@@ -116,8 +116,8 @@ Die Anwendung enthält folgende Schwachstellen:
 
 - `index.php` - Hauptseite mit Upload-Formular
 - `upload.php` - Upload-Handler (enthält die Schwachstelle)
-- `gallery.php` - Galerie mit hochgeladenen Bildern
 - `thanks.php` - Bestätigungsseite
+- `uploads/index.php` - Übersicht aller Uploads
 - `config.php` - Konfiguration
 - `functions.php` - Hilfsfunktionen
 - `assets/style.css` - Stylesheet

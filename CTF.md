@@ -181,7 +181,7 @@ Die Webanwendung besteht aus folgenden Komponenten:
 | --- | --- |
 | `index.php` | Hauptseite mit Upload-Formular und Kampagneninformation |
 | `upload.php` | Upload-Handler mit Schwachstelle |
-| `gallery.php` | Galerie mit hochgeladenen Bildern |
+| `uploads/index.php` | Übersicht aller hochgeladenen Dateien |
 | `thanks.php` | Bestätigungsseite nach erfolgreichem Upload |
 | `config.php` | Ablenkung |
 | `functions.php` | Hilfsfunktionen für Submission-Verwaltung |
@@ -258,13 +258,9 @@ In einer sicheren Konfiguration würde stattdessen die PHP-Ausführung im Upload
 
 Dies würde die Ausführung von PHP-Code im Upload-Verzeichnis vollständig verhindern, unabhängig vom Dateinamen.
 
-#### 5. Versteckte Gallery-Seite
+#### 5. Upload-Verzeichnis als improvisierte Galerie
 
-Die Seite `gallery.php` zeigt alle hochgeladenen Bilder an, ist jedoch **nicht in der Navigation** der Hauptseite verlinkt. Spieler:innen müssen diese Seite durch **Web-Enumeration** mit Tools wie `gobuster` oder `dirb` finden. Dies simuliert eine realistische Situation, in der nicht alle Endpunkte einer Webanwendung offensichtlich sind.
-
-Hinweise auf die Existenz der Gallery finden sich in:
-- `robots.txt` (ursprünglich, wurde später entfernt für erhöhten Schwierigkeitsgrad)
-- Direkte Enumeration mit Wordlists wie `/usr/share/wordlists/dirb/common.txt`
+Alle eingereichten Dateien werden direkt unter `/uploads/` abgelegt. Die Route `uploads/index.php` stellt eine einfache Übersicht der vorhandenen Uploads bereit und lebt im gleichen Verzeichnis wie die hochgeladenen Dateien. Die Seite ist nicht in der Hauptnavigation verlinkt; sie wird durch Enumeration (z. B. mit `gobuster dir -w /usr/share/wordlists/dirb/common.txt`) entdeckt, weil der Ordnername `uploads` Bestandteil der Wordlist ist. Das Dankes-Template verweist optional auf `/uploads/`, damit Teilnehmende nach einem Test-Upload die Oberfläche bequem erreichen können. Damit verbleibt der Discovery-Charakter, gleichzeitig erfolgt die Darstellung vollständig über das Upload-Verzeichnis.
 
 ### Erstellung System-User und Flag
 
@@ -295,13 +291,13 @@ total 4
 
 Um die Spieler:innen in die richtige Richtung zu lenken, wurden folgende Hinweise implementiert:
 
-1. **robots.txt**: Enthält Einträge für `/uploads/`, `/data/`, `/config/`, `/old/` und `/backup_smb.sh`, was auf interessante Verzeichnisse und Dateien hinweist. Die Gallery (`gallery.php`) ist **nicht** in robots.txt aufgeführt und muss durch aktive Enumeration gefunden werden.
+1. **robots.txt**: Enthält Einträge für `/uploads/`, `/data/`, `/config/`, `/old/` und `/backup_smb.sh`, was auf interessante Verzeichnisse und Dateien hinweist. Der Hinweis auf `/uploads/` führt direkt zu der improvisierten Galerie.
 
 2. **Upload-Formular**: Zeigt deutlich, welche Dateitypen akzeptiert werden (`JPG, JPEG, PNG, GIF`)
 
 3. **Fehlermeldungen**: Geben klare Hinweise auf die Validierungslogik bei fehlerhaften Uploads
 
-4. **Galerie (versteckt)**: Die Seite `gallery.php` ist nicht in der Navigation verlinkt und muss durch Web-Enumeration mit Tools wie `gobuster` oder `dirb` gefunden werden
+4. **Uploads-Verzeichnis (versteckt)**: Die Route `/uploads/` (bzw. `uploads/index.php`) ist nicht im Menü verlinkt, lässt sich aber mit gängigen Wordlists wie `/usr/share/wordlists/dirb/common.txt` finden und listet alle Uploads auf
 
 5. **Decoy-Verzeichnisse**: `/old/` (Under Construction) und `/config/` (403 Forbidden) dienen als realistische Ablenkung und simulieren eine echte Webanwendung mit verschiedenen Bereichen
 
@@ -829,7 +825,6 @@ Starting gobuster in directory enumeration mode
 /config               (Status: 301) [Size: 311] [--> http://10.0.2.10/config/]
 /config.php           (Status: 200) [Size: 0]
 /data                 (Status: 301) [Size: 309] [--> http://10.0.2.10/data/]
-/gallery.php          (Status: 200) [Size: 4521]
 /index.php            (Status: 200) [Size: 3782]
 /old                  (Status: 301) [Size: 308] [--> http://10.0.2.10/old/]
 /robots.txt           (Status: 200) [Size: 287]
@@ -843,7 +838,6 @@ Finished
 
 Die Enumeration zeigt interessante Dateien und Verzeichnisse:
 - `/robots.txt` - Könnte Hinweise enthalten
-- `/gallery.php` - **Galerie-Seite (nicht in Navigation verlinkt!)**
 - `/uploads/` - Verzeichnis für hochgeladene Dateien
 - `/upload.php` - Upload-Handler
 - `/data/` - Daten-Verzeichnis (geschützt)
@@ -875,19 +869,18 @@ Allow: /
 - `/data/` enthält vermutlich sensible Informationen (durch `.htaccess` geschützt)
 - `/config/` und `/old/` sind Decoy-Verzeichnisse
 - `/backup_smb.sh` wird erwähnt (Hinweis für Flag 2)
-- **Wichtig:** `gallery.php` ist **nicht** in robots.txt aufgeführt, wurde aber durch gobuster gefunden
+- `uploads/` dient als improvisierte Galerie und kann direkt erkundet werden
 
-### Schritt 3: Untersuchung der versteckten Gallery
+### Schritt 3: Untersuchung des Upload-Verzeichnisses
 
-Die durch gobuster gefundene Seite `/gallery.php` wird untersucht, obwohl sie nicht in der Navigation der Hauptseite verlinkt ist:
+Die Enumeration und der Eintrag in `robots.txt` weisen auf `/uploads/` hin. Beim Aufruf des Verzeichnisses wird `uploads/index.php` ausgeführt und listet die vorhandenen Dateien auf:
 
 ```bash
 ┌──(kali㉿kali)-[~]
-└─$ curl http://10.0.2.10/gallery.php
+└─$ curl http://10.0.2.10/uploads/
 ```
 
-Die Gallery-Seite zeigt hochgeladene Bilder und enthält ebenfalls ein Upload-Formular. Das Formular zeigt, dass folgende Dateitypen akzeptiert werden:
-- **JPG, JPEG, PNG, GIF**
+Die Übersicht bestätigt, dass die hochgeladenen Dateien unter ihrem Originalnamen abgelegt werden – inklusive der Dateiendungskombinationen. Genau diese Information ist für den Double-Extension-Angriff entscheidend.
 
 ### Schritt 4: Test der Upload-Funktionalität
 
@@ -928,7 +921,7 @@ Die Datei hat den Namen `shell.php.jpg`:
 Es gibt zwei Möglichkeiten, die Datei hochzuladen:
 
 **Option 1: Browser-Upload**
-1. Besuche `http://10.0.2.10/gallery.php`
+1. Besuche `http://10.0.2.10/`
 2. Wähle die Datei `shell.php.jpg` aus
 3. Fülle die Formularfelder aus
 4. Klicke auf "Moment teilen"
@@ -995,7 +988,6 @@ drwxr-xr-x 2 www-data www-data 4096 Oct 22 18:00 config
 -rw-r--r-- 1 www-data www-data  485 Oct 22 17:51 config.php
 drwxr-xr-x 2 www-data www-data 4096 Oct 22 17:51 data
 -rw-r--r-- 1 www-data www-data 1842 Oct 22 18:21 functions.php
--rw-r--r-- 1 www-data www-data 4231 Oct 22 17:51 gallery.php
 -rw-r--r-- 1 www-data www-data 2847 Oct 22 18:19 index.php
 drwxr-xr-x 2 www-data www-data 4096 Oct 22 18:00 old
 -rw-r--r-- 1 www-data www-data  345 Oct 22 18:07 robots.txt
@@ -1137,7 +1129,7 @@ Das Skript `backup_smb.sh` (aus `robots.txt`) enthält Base64-kodierte Zugangsda
 
 **Schwachstellen-Kette:**
 
-1. **Versteckte Gallery:** `gallery.php` nicht in Navigation → Erfordert Web-Enumeration
+1. **Verstecktes Upload-Verzeichnis:** `/uploads/` nicht in Navigation → Wird durch Enumeration entdeckt
 2. **Schwache Upload-Validierung:** Nur letzte Dateiendung wird geprüft (`pathinfo()`)
 3. **Keine Filename-Sanitization:** Original-Dateinamen werden verwendet (keine Randomisierung)
 4. **Apache FilesMatch:** `.htaccess` führt alle Dateien mit `.php` im Namen als PHP aus
@@ -1146,7 +1138,7 @@ Das Skript `backup_smb.sh` (aus `robots.txt`) enthält Base64-kodierte Zugangsda
 
 **Exploitation-Flow:**
 
-1. **Enumeration:** gobuster/dirb findet versteckte `gallery.php`
+1. **Enumeration:** gobuster/dirb findet `/uploads/`
 2. **Reconnaissance:** robots.txt zeigt interessante Pfade
 3. **Vulnerability Testing:** Upload mit normalem Bild testen
 4. **Weaponization:** 

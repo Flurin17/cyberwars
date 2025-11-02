@@ -5,14 +5,14 @@
  * Speichert eine Submission in der TXT-Datei
  */
 function saveSubmission($submission) {
-    // Stelle sicher, dass das data/ Verzeichnis existiert
-    if (!is_dir(DATA_DIR)) {
-        mkdir(DATA_DIR, 0777, true);
-        chmod(DATA_DIR, 0777);
+    $dataDirPath = __DIR__ . '/' . DATA_DIR;
+    if (!is_dir($dataDirPath)) {
+        mkdir($dataDirPath, 0777, true);
+        chmod($dataDirPath, 0777);
     }
 
-    // Einfaches TXT-Format: Timestamp|Name|Email|Description|Filename
-    // Schreibe in Log-Datei (für Attacker sichtbar über RCE)
+    $logFile = __DIR__ . '/' . SUBMISSIONS_FILE;
+
     $line = sprintf(
         "[%s] Uploaded: %s by %s (%s)\n",
         $submission['timestamp'],
@@ -21,20 +21,22 @@ function saveSubmission($submission) {
         $submission['email']
     );
     
-    file_put_contents(SUBMISSIONS_FILE, $line, FILE_APPEND | LOCK_EX);
-    chmod(SUBMISSIONS_FILE, 0666);
+    file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+    chmod($logFile, 0666);
 }
 
 /**
  * Liest alle Submissions aus der TXT-Datei
  */
 function getAllSubmissions() {
-    if (!file_exists(SUBMISSIONS_FILE)) {
+    $logFile = __DIR__ . '/' . SUBMISSIONS_FILE;
+
+    if (!file_exists($logFile)) {
         return [];
     }
 
     $submissions = [];
-    $lines = file(SUBMISSIONS_FILE, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    $lines = file($logFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
     foreach ($lines as $line) {
         // Parse format: [timestamp] Uploaded: filename by name (email)
@@ -68,4 +70,3 @@ function getRecentSubmissions($limit = 6) {
 function cleanOutput($text) {
     return htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 }
-

